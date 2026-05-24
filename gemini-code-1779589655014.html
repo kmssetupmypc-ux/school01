@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BFT Hopper Log - Advanced Importer</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- PapaParse สำหรับแกะไฟล์ CSV -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <!-- Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Chart.js สำหรับแสดงกราฟ -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Sarabun', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-900 min-h-screen text-slate-100">
+
+    <div class="max-w-7xl mx-auto px-4 py-6">
+        <!-- Header -->
+        <div class="mb-6 flex flex-col md:flex-row md:items-center justify-between border-b border-slate-800 pb-4 gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+                    🤖 BFT Hopper Log Advanced Importer
+                </h1>
+                <p class="text-slate-400 text-sm mt-1">ระบบวิเคราะห์ พรีวิว และนำเข้าข้อมูลสถานะเครื่องทดสอบ Hopper เข้าสู่ระบบรักษาความปลอดภัยฐานข้อมูล</p>
+            </div>
+            <!-- ปุ่มเดียวจบ: จัดการเชื่อมต่อ -->
+            <div>
+                <button id="btnConnect" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl shadow-md transition flex items-center gap-2 transform active:scale-95 cursor-pointer">
+                    🔌 Connect Supabase
+                </button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            
+            <!-- Left Column: Settings & File Upload -->
+            <div class="lg:col-span-1 space-y-4">
+                <!-- 1. Config Block -->
+                <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                    <h2 class="text-md font-semibold text-white mb-3 flex items-center gap-2">🔑 Configuration</h2>
+                    <div class="space-y-3 text-sm">
+                        <div>
+                            <label class="block text-slate-400 mb-1">Supabase URL</label>
+                            <input type="text" id="supabaseUrl" class="w-full px-3 py-1.5 bg-slate-900 border border-slate-600 rounded-lg focus:outline-none focus:border-blue-500 text-white" placeholder="https://xxx.supabase.co">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1">Anon Key</label>
+                            <input type="password" id="supabaseKey" class="w-full px-3 py-1.5 bg-slate-900 border border-slate-600 rounded-lg focus:outline-none focus:border-blue-500 text-white" placeholder="eyJhbGciOi...">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1">Table Name</label>
+                            <input type="text" id="tableName" class="w-full px-3 py-1.5 bg-slate-900 border border-slate-600 rounded-lg focus:outline-none focus:border-blue-500 text-white" value="BFT_Hopper_log">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. Upload Block -->
+                <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-md font-semibold text-white flex items-center gap-2">📂 Select File</h2>
+                        <!-- Dry run toggle -->
+                        <label class="inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="chkDryRun" class="sr-only peer">
+                            <div class="relative w-9 h-5 bg-slate-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+                            <span class="ms-2 text-xs font-medium text-amber-400">Dry Run</span>
+                        </label>
+                    </div>
+                    <label class="flex flex-col items-center justify-center w-full h-24 border-2 border-slate-600 border-dashed rounded-xl cursor-pointer bg-slate-900 hover:bg-slate-850 transition">
+                        <div class="flex flex-col items-center justify-center pt-3 pb-3">
+                            <p class="text-xs text-slate-400 font-semibold">ลากวางไฟล์ หรือคลิกเพื่อเลือก</p>
+                            <p class="text-[11px] text-slate-500 mt-0.5">รองรับเฉพาะนามสกุล .csv เท่านั้น</p>
+                        </div>
+                        <input id="csvFile" type="file" accept=".csv" class="hidden" disabled />
+                    </label>
+                    <div id="fileInfo" class="hidden text-xs bg-slate-900 p-2 rounded-lg text-slate-300 mt-2 flex justify-between items-center border border-slate-700">
+                        <span id="fileName" class="truncate font-medium"></span>
+                        <span id="fileSize" class="text-slate-500 shrink-0 ml-2"></span>
+                    </div>
+                </div>
+
+                <!-- 3. Real-time Progress Bar -->
+                <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                    <h2 class="text-md font-semibold text-white mb-2">⏳ Upload Progress</h2>
+                    <div class="w-full bg-slate-900 rounded-full h-3 mb-1 overflow-hidden border border-slate-700">
+                        <div id="progressBar" class="bg-blue-500 h-3 rounded-full w-0 transition-all duration-100"></div>
+                    </div>
+                    <div class="flex justify-between text-xs text-slate-400">
+                        <span id="progressPercent">0%</span>
+                        <span id="progressCount">0 / 0 แถว</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Status Summary, Charts, & Previews -->
+            <div class="lg:col-span-3 space-y-4">
+                
+                <!-- Counters & Log Status Grid -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="bg-slate-800 p-3 rounded-xl border border-slate-700">
+                        <p class="text-xs text-slate-400">✅ สำเร็จ (Success)</p>
+                        <p id="cntSuccess" class="text-xl font-bold text-emerald-400 mt-1">0</p>
+                    </div>
+                    <div class="bg-slate-800 p-3 rounded-xl border border-slate-700">
+                        <p class="text-xs text-slate-400">↷ ข้าม (Skipped)</p>
+                        <p id="cntSkip" class="text-xl font-bold text-amber-400 mt-1">0</p>
+                    </div>
+                    <div class="bg-slate-800 p-3 rounded-xl border border-slate-700">
+                        <p class="text-xs text-slate-400">❌ ผิดพลาด (Error)</p>
+                        <p id="cntError" class="text-xl font-bold text-rose-400 mt-1">0</p>
+                    </div>
+                    <div class="bg-slate-800 p-3 rounded-xl border border-slate-700 bg-gradient-to-br from-slate-800 to-indigo-950">
+                        <p class="text-xs text-indigo-300">📅 ยอดรวมไฟล์นี้</p>
+                        <p id="cntTotal" class="text-xl font-bold text-indigo-400 mt-1">0</p>
+                    </div>
+                </div>
+
+                <!-- Time-based Counter Banner (Daily / Weekly / Monthly) -->
+                <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">📊 ตัวนับสรุปจำแนกเวลา (ในไฟล์ที่เลือก)</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                        <div class="bg-slate-900/50 p-2 rounded-lg border border-slate-700">
+                            <span class="text-xs text-slate-400 block">รายวัน (ล่าสุดในไฟล์)</span>
+                            <span id="lblDaily" class="text-lg font-bold text-cyan-400">0 แถว</span>
+                        </div>
+                        <div class="bg-slate-900/50 p-2 rounded-lg border border-slate-700">
+                            <span class="text-xs text-slate-400 block">รายสัปดาห์</span>
+                            <span id="lblWeekly" class="text-lg font-bold text-purple-400">0 แถว</span>
+                        </div>
+                        <div class="bg-slate-900/50 p-2 rounded-lg border border-slate-700">
+                            <span class="text-xs text-slate-400 block">รายเดือน</span>
+                            <span id="lblMonthly" class="text-lg font-bold text-pink-400">0 แถว</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Graphs & Analytics Section -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <!-- กราฟรายสัปดาห์ -->
+                    <div class="md:col-span-2 bg-slate-800 p-4 rounded-xl border border-slate-700 h-[280px]">
+                        <h3 class="text-sm font-semibold text-white mb-2">📈 กราฟผลทดสอบรายสัปดาห์ (PASSED / FAILED / ABORTED)</h3>
+                        <div class="h-[210px] w-full">
+                            <canvas id="weeklyChart"></canvas>
+                        </div>
+                    </div>
+                    <!-- แผงควบคุม Actions -->
+                    <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col justify-between">
+                        <div>
+                            <h3 class="text-sm font-semibold text-white mb-1">🚀 Action Panel</h3>
+                            <p class="text-xs text-slate-400">ตรวจสอบและกดส่งข้อมูลเข้าสู่ฐานข้อมูลปลายทาง</p>
+                            <div id="dryRunIndicator" class="hidden mt-3 p-2 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-xs text-center font-bold">
+                                ⚠️ อยู่ในโหมด Dry Run (จำลองระบบไม่บันทึกจริง)
+                            </div>
+                        </div>
+                        <div class="space-y-2 mt-4">
+                            <div id="statusMessage" class="hidden p-2 text-xs rounded-lg border"></div>
+                            <button id="btnSubmit" disabled class="w-full px-4 py-3 bg-slate-700 text-slate-500 font-bold rounded-xl cursor-not-allowed shadow transition text-center">
+                                Start Import Data
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Preview Table Component (Default Hidden) -->
+                <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+                    <!-- หัวข้อกดยุบ/ขยายตัวอย่างได้ -->
+                    <button id="btnTogglePreview" class="w-full px-4 py-3 bg-slate-750 hover:bg-slate-700 transition flex items-center justify-between font-semibold text-sm border-b border-slate-700 cursor-pointer">
+                        <span class="flex items-center gap-2">👁️ ตารางพรีวิวข้อมูล CSV (ซ่อนไว้เป็นค่าเริ่มต้นเพื่อความเร็ว)</span>
+                        <span id="previewArrow">▼ คลิกเปิดแสดงผล</span>
+                    </button>
+                    
+                    <div id="previewContainer" class="hidden p-2 overflow-x-auto max-h-[300px]">
+                        <table class="w-full text-xs text-left text-slate-300" id="previewTable">
+                            <thead class="text-[11px] text-slate-400 uppercase bg-slate-900 sticky top-0">
+                                <tr id="tableHeader">
+                                    <th class="px-4 py-2 text-center text-slate-500">ยังไม่ได้อัปโหลดไฟล์ข้อมูล</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody" class="divide-y divide-slate-800">
+                                <!-- Data rows inject here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let parsedData = [];
+        let supabaseClient = null;
+        let isConnected = false;
+        let chartInstance = null;
+
+        // ดึง Elements
+        const btnConnect = document.getElementById('btnConnect');
+        const supabaseUrlInput = document.getElementById('supabaseUrl');
+        const supabaseKeyInput = document.getElementById('supabaseKey');
+        const tableNameInput = document.getElementById('tableName');
+        const csvFileInput = document.getElementById('csvFile');
+        const chkDryRun = document.getElementById('chkDryRun');
+        const dryRunIndicator = document.getElementById('dryRunIndicator');
+        const btnSubmit = document.getElementById('btnSubmit');
+        const statusMessage = document.getElementById('statusMessage');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileNameSpan = document.getElementById('fileName');
+        const fileSizeSpan = document.getElementById('fileSize');
+
+        // Progress & Counters Elements
+        const progressBar = document.getElementById('progressBar');
+        const progressPercent = document.getElementById('progressPercent');
+        const progressCount = document.getElementById('progressCount');
+        const cntSuccess = document.getElementById('cntSuccess');
+        const cntSkip = document.getElementById('cntSkip');
+        const cntError = document.getElementById('cntError');
+        const cntTotal = document.getElementById('cntTotal');
+        const lblDaily = document.getElementById('lblDaily');
+        const lblWeekly = document.getElementById('lblWeekly');
+        const lblMonthly = document.getElementById('lblMonthly');
+
+        // Toggle Preview Block
+        const btnTogglePreview = document.getElementById('btnTogglePreview');
+        const previewContainer = document.getElementById('previewContainer');
+        const previewArrow = document.getElementById('previewArrow');
+        const tableHeader = document.getElementById('tableHeader');
+        const tableBody = document.getElementById('tableBody');
+
+        // 1. จัดการปุ่ม Connect เดียวเด็ดขาด
+        btnConnect.addEventListener('click', function() {
+            const url = supabaseUrlInput.value.trim();
+            const key = supabaseKeyInput.value.trim();
+
+            if (!url || !key) {
+                alert('กรุณากรอกทั้ง Supabase URL และ Anon Key ให้ครบถ้วนก่อนเชื่อมต่อครับ');
+                return;
+            }
+
+            try {
+                supabaseClient = supabase.createClient(url, key);
+                isConnected = true;
+                
+                // เปลี่ยนสถานะ UI ของปุ่ม Connect
+                btnConnect.textContent = '🟢 Connected';
+                btnConnect.className = "px-5 py-2.5 bg-emerald-600 text-white font-semibold rounded-xl shadow-md transition flex items-center gap-2 cursor-not-allowed";
+                btnConnect.disabled = true;
+
+                // เปิดให้สามารถเลือกไฟล์ได้
+                csvFileInput.disabled = false;
+                
+                // ล็อกไม่ให้แก้ไขข้อมูล Config หลังต่อสำเร็จ
+                supabaseUrlInput.disabled = true;
+                supabaseKeyInput.disabled = true;
+                tableNameInput.disabled = true;
+                
+                showStatus('💡 เชื่อมต่อ Supabase สำเร็จ! คุณสามารถเลือกไฟล์ CSV เพื่อเริ่มทำงานได้แล้ว', 'success');
+            } catch (e) {
+                showStatus('❌ การเชื่อมต่อผิดพลาด: ' + e.message, 'error');
+            }
+        });
+
+        // 2. ควบคุมการพรีวิวแบบซ่อนเป็น Default (กดคลิกสลับแสดง/ซ่อน)
+        btnTogglePreview.addEventListener('click', function() {
+            const isHidden = previewContainer.classList.contains('hidden');
+            if (isHidden) {
+                previewContainer.classList.remove('hidden');
+                previewArrow.textContent = '▲ คลิกเพื่อซ่อนตาราง';
+            } else {
+                previewContainer.classList.add('hidden');
+                previewArrow.textContent = '▼ คลิกเปิดแสดงผล';
+            }
+        });
+
+        // ควบคุมสถานะโหมด Dry Run จำลอง
+        chkDryRun.addEventListener('change', function() {
+            if (this.checked) {
+                dryRunIndicator.classList.remove('hidden');
+            } else {
+                dryRunIndicator.classList.add('hidden');
+            }
+        });
+
+        // ฟังก์ชันแปลงขนาดไฟล์
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // 3. ตรวจจับและประมวลผลไฟล์ CSV
+        csvFileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            fileNameSpan.textContent = file.name;
+            fileSizeSpan.textContent = formatBytes(file.size);
+            fileInfo.classList.remove('hidden');
+
+            resetCounters();
+
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    parsedData = results.data;
+                    cntTotal.textContent = parsedData.length;
+                    progressCount.textContent = `0 / ${parsedData.length} แถว`;
+
+                    // คำนวณระบบเวลารายวัน/สัปดาห์/เดือน และจัดกลุ่มวาดกราฟ
+                    processTimeAndAnalytics(parsedData);
+
+                    // สร้างโครงสร้างตารางพรีวิว
+                    renderPreviewTable(results.meta.fields, parsedData);
+
+                    // เปิดปุ่ม Submit นำเข้าข้อมูล
+                    btnSubmit.disabled = false;
+                    btnSubmit.className = "w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow cursor-pointer transition text-center transform active:scale-95";
+                },
+                error: function(err) {
+                    showStatus('เกิดปัญหาในการอ่านเอกสาร CSV: ' + err.message, 'error');
+                }
+            });
+        });
+
+        // 4. การจัดการคำนวณแบ่งกลุ่มเวลาตามโจทย์ (Daily / Weekly / Monthly Counters + Graphs)
+        function processTimeAndAnalytics(data) {
+            let dailyCount = 0, weeklyCount = 0, monthlyCount = 0;
+            
+            // ใช้เก็บสถิติตามวันในสัปดาห์เพื่อเอาไปลงกราฟ
+            let weeklyStats = {
+                labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                passed: [0, 0, 0, 0, 0, 0, 0],
+                failed: [0, 0, 0, 0, 0, 0, 0],
+                aborted: [0, 0, 0, 0, 0, 0, 0]
+            };
+
+            if (data.length === 0) return;
+
+            // ตรวจสอบคอลัมน์วันที่จากข้อมูลจริงในไฟล์ เช่น 'LogStarttime'
+            const timeField = 'LogStarttime';
+            const statusField = 'LogStatus';
+
+            // สมมติหาวันที่ล่าสุดที่มีในไฟล์เป็นตัวอ้างอิงรายวัน
+            let latestDateStr = "";
+            for(let i=0; i<data.length; i++) {
+                if(data[i][timeField]) {
+                    latestDateStr = data[i][timeField].split(' ')[0];
+                    break;
+                }
+            }
+            
+            let targetDate = latestDateStr ? new Date(latestDateStr) : new Date();
+            if (isNaN(targetDate)) targetDate = new Date(); // Fallback เป็นเวลาปัจจุบันถ้าแปลงสัญกรณ์ไม่ผ่าน
+
+            const targetYear = targetDate.getFullYear();
+            const targetMonth = targetDate.getMonth();
+
+            // คำนวณช่วงของสัปดาห์ (ย้อนหลัง 7 วันจากวันล่าสุด)
+            const oneDayMs = 24 * 60 * 60 * 1000;
+            const weekStartMs = targetDate.getTime() - (7 * oneDayMs);
+
+            data.forEach(row => {
+                if (!row[timeField]) return;
+                
+                const rowDate = new Date(row[timeField].split(' ')[0]);
+                if (isNaN(rowDate)) return;
+
+                const rowTime = rowDate.getTime();
+                const status = (row[statusField] || '').toUpperCase();
+
+                // 1. เช็กตัวนับรายวัน
+                if (rowDate.toDateString() === targetDate.toDateString()) {
+                    dailyCount++;
+                }
+                // 2. เช็กตัวนับรายสัปดาห์ (ในรอบ 7 วันล่าสุดของไฟล์)
+                if (rowTime >= weekStartMs && rowTime <= targetDate.getTime()) {
+                    weeklyCount++;
+                    
+                    // จัดเก็บลงสถิติกราฟรายสัปดาห์จำแนกตามวัน (0=Sunday, 1=Monday... ปรับสลับให้จันทร์ขึ้นก่อน)
+                    let dayIndex = rowDate.getDay() - 1; 
+                    if (dayIndex === -1) dayIndex = 6; // ย้ายวันอาทิตย์ไปท้ายสุด
+                    
+                    if (dayIndex >= 0 && dayIndex <= 6) {
+                        if (status.includes('PASS')) weeklyStats.passed[dayIndex]++;
+                        else if (status.includes('FAIL')) weeklyStats.failed[dayIndex]++;
+                        else if (status.includes('ABORT') || status.includes('NODATA')) weeklyStats.aborted[dayIndex]++;
+                    }
+                }
+                // 3. เช็กตัวนับรายเดือน
+                if (rowDate.getFullYear() === targetYear && rowDate.getMonth() === targetMonth) {
+                    monthlyCount++;
+                }
+            });
+
+            // อัปเดตขึ้นหน้าจอ UI
+            lblDaily.textContent = `${dailyCount.toLocaleString()} แถว`;
+            lblWeekly.textContent = `${weeklyCount.toLocaleString()} แถว`;
+            lblMonthly.textContent = `${monthlyCount.toLocaleString()} แถว`;
+
+            // วาดหรือรีเฟรชกราฟจำแนกกลุ่มผลลัพธ์รายสัปดาห์
+            renderWeeklyChart(weeklyStats);
+        }
+
+        // ฟังก์ชันวาดกราฟ Chart.js 
+        function renderWeeklyChart(stats) {
+            const ctx = document.getElementById('weeklyChart').getContext('2d');
+            
+            if (chartInstance) {
+                chartInstance.destroy(); // ล้างกราฟเก่าก่อนวาดใหม่
+            }
+
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: stats.labels,
+                    datasets: [
+                        { label: 'PASSED', data: stats.passed, backgroundColor: '#10b981' },
+                        { label: 'FAILED', data: stats.failed, backgroundColor: '#f43f5e' },
+                        { label: 'ABORTED/NODATA', data: stats.aborted, backgroundColor: '#f59e0b' }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { labels: { color: '#94a3b8', font: { size: 10 } }, position: 'top' }
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#94a3b8' } },
+                        y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' }, stacked: false }
+                    }
+                }
+            });
+        }
+
+        // 5. จัดการเรนเดอร์ตารางพรีวิวข้อมูลจำลองภายใน
+        function renderPreviewTable(headers, data) {
+            tableHeader.innerHTML = '';
+            tableBody.innerHTML = '';
+
+            if (!headers || headers.length === 0) {
+                tableHeader.innerHTML = '<th class="px-4 py-2 text-center text-slate-500">ไม่พบโครงสร้างไฟล์คอลัมน์</th>';
+                return;
+            }
+
+            headers.forEach(h => {
+                const th = document.createElement('th');
+                th.className = 'px-4 py-2 font-semibold text-slate-200 bg-slate-900 border-b border-slate-700';
+                th.textContent = h;
+                tableHeader.appendChild(th);
+            });
+
+            const limit = Math.min(data.length, 15); // แสดงพรีวิวสั้น ๆ พอเห็นโครงสร้าง 15 แถว
+            for (let i = 0; i < limit; i++) {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-750 transition border-b border-slate-800';
+                headers.forEach(h => {
+                    const td = document.createElement('td');
+                    td.className = 'px-4 py-1.5 text-slate-400 max-w-xs truncate';
+                    td.textContent = data[i][h] !== undefined ? data[i][h] : '';
+                    tr.appendChild(td);
+                });
+                tableBody.appendChild(tr);
+            }
+        }
+
+        // 6. ส่งข้อมูลขึ้นสู่ระบบแบบแบ่ง Chunk พร้อม Real-time Progress Bar % ลิงก์สัญลักษณ์ตามเงื่อนไขสเปก
+        btnSubmit.addEventListener('click', async function() {
+            if (!isConnected || parsedData.length === 0) return;
+
+            const table = tableNameInput.value.trim();
+            const isDryRun = chkDryRun.checked;
+
+            btnSubmit.disabled = true;
+            btnSubmit.textContent = '⏳ Processing...';
+            showStatus(isDryRun ? '🏃‍♂️ เริ่มต้นจำลองการทำงานระบบ (Dry Run Mode)...' : '🚀 กำลังอัปโหลดข้อมูลสู่ระบบจริง...', 'loading');
+
+            let success = 0, skip = 0, errCount = 0;
+            const chunkSize = 200; // แบ่งกลุ่มส่งต่อรอบเพื่อประสิทธิภาพการประมวลผลความเร็ว
+
+            for (let i = 0; i < parsedData.length; i += chunkSize) {
+                const chunk = parsedData.slice(i, i + chunkSize);
+
+                if (isDryRun) {
+                    // จำลองเหตุการณ์จำลองเสมือนจริงดีเลย์สั้น ๆ 
+                    await new Promise(res => setTimeout(res, 80));
+                    success += chunk.length; // สมมติว่าสำเร็จหมดในโหมดทดสอบ
+                } else {
+                    // ยิงเข้าฐานข้อมูลจริงผ่าน Supabase
+                    const { error } = await supabaseClient.from(table).insert(chunk);
+                    
+                    if (error) {
+                        console.error("Chunk insert error:", error);
+                        errCount += chunk.length;
+                    } else {
+                        success += chunk.length;
+                    }
+                }
+
+                // สรุปอัปเดตความคืบหน้าแบบ Real-time เปอร์เซ็นต์พุ่งตามสเปก
+                const currentProgress = Math.min(i + chunkSize, parsedData.length);
+                const percent = Math.round((currentProgress / parsedData.length) * 100);
+                
+                progressBar.style.width = `${percent}%`;
+                progressPercent.textContent = `${percent}%`;
+                progressCount.textContent = `${currentProgress.toLocaleString()} / ${parsedData.length.toLocaleString()} แถว`;
+
+                // สะท้อนค่าลง Counter แบบ Real-time ✅ / ↷ / ❌
+                cntSuccess.textContent = success;
+                cntSkip.textContent = skip;
+                cntError.textContent = errCount;
+            }
+
+            // แสดงสรุปผลลัพธ์หลังทำงานเสร็จสิ้นสมบูรณ์
+            if (isDryRun) {
+                showStatus(`✨ [Dry Run] ประมวลผลจำลองเสร็จสิ้นเรียบร้อย! คาดว่าจะนำเข้าได้ทั้งหมด ${success} แถว`, 'success');
+            } else if (errCount > 0) {
+                showStatus(`⚠️ นำเข้าข้อมูลเสร็จสมบูรณ์ แต่พบข้อผิดพลาดบางส่วน: สำเร็จ ${success} แถว, ล้มเหลว ${errCount} แถว`, 'error');
+            } else {
+                showStatus(`🎉 สำเร็จสมบูรณ์! นำเข้าชุดข้อมูลทั้งหมด ${success} แถว เรียบร้อยแล้วครับ!`, 'success');
+            }
+
+            btnSubmit.disabled = false;
+            btnSubmit.textContent = 'Start Import Data';
+        } );
+
+        function resetCounters() {
+            progressBar.style.width = '0%';
+            progressPercent.textContent = '0%';
+            cntSuccess.textContent = '0';
+            cntSkip.textContent = '0';
+            cntError.textContent = '0';
+            cntTotal.textContent = '0';
+        }
+
+        function showStatus(msg, type) {
+            statusMessage.classList.remove('hidden', 'bg-emerald-500/20', 'text-emerald-300', 'border-emerald-500/30', 'bg-rose-500/20', 'text-rose-300', 'border-rose-500/30', 'bg-blue-500/20', 'text-blue-300', 'border-blue-500/30');
+            statusMessage.innerHTML = msg;
+            if (type === 'success') statusMessage.classList.add('bg-emerald-500/20', 'text-emerald-300', 'border-emerald-500/30');
+            else if (type === 'error') statusMessage.classList.add('bg-rose-500/20', 'text-rose-300', 'border-rose-500/30');
+            else if (type === 'loading') statusMessage.classList.add('bg-blue-500/20', 'text-blue-300', 'border-blue-500/30');
+            statusMessage.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
